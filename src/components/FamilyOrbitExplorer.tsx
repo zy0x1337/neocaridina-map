@@ -298,6 +298,7 @@ interface FamilyItem {
   strains: Strain[];
   color: string;
   textColor: string;
+  glow: string;
   angle: number;
   orbitR: number;
   nx: number;
@@ -307,11 +308,12 @@ interface FamilyItem {
 }
 
 interface Props {
-  strains: Strain[];
-  onSelect: (id: string) => void;
+  visibleStrains: Strain[];
+  onSelect: React.Dispatch<React.SetStateAction<string | null>>;
+  showBreedingArcs: boolean;
 }
 
-export function FamilyOrbitExplorer({ strains, onSelect }: Props) {
+export function FamilyOrbitExplorer({ visibleStrains, onSelect, showBreedingArcs }: Props) {
   const isMobile = useIsMobile();
 
   // -------------------------------------------------------------------------
@@ -325,7 +327,6 @@ export function FamilyOrbitExplorer({ strains, onSelect }: Props) {
   const [railOpen,   setRailOpen]   = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [mobileLabel, setMobileLabel] = useState<string | null>(null);
-  const [showBreedingArcs, setShowBreedingArcs] = useState(false);
   const [focusKey, setFocusKey] = useState<string | null>(null);
 
   const keyboardFocus = (key: string) => () => setFocusKey(key);
@@ -336,7 +337,7 @@ export function FamilyOrbitExplorer({ strains, onSelect }: Props) {
   // -------------------------------------------------------------------------
   const families = useMemo<FamilyItem[]>(() => {
     const grouped = new Map<string, Strain[]>();
-    for (const s of strains) {
+    for (const s of visibleStrains) {
       if (!grouped.has(s.family)) grouped.set(s.family, []);
       grouped.get(s.family)!.push(s);
     }
@@ -361,6 +362,7 @@ export function FamilyOrbitExplorer({ strains, onSelect }: Props) {
           strains: ss,
           color:     familyColors[family] ?? "#888",
           textColor: FAMILY_TEXT[family]  ?? "#fff",
+          glow:      FAMILY_GLOW[family]  ?? "rgba(255,255,255,0.3)",
           angle,
           orbitR,
           nx,
@@ -374,7 +376,7 @@ export function FamilyOrbitExplorer({ strains, onSelect }: Props) {
     placeRing(neoFamilies, 0);
     placeRing(caridinaFamilies, 0);
     return items;
-  }, [strains]);
+  }, [visibleStrains]);
 
   const moonsByFamily = useMemo(() => {
     const map = new Map<string, MoonDatum[]>();
@@ -389,7 +391,14 @@ export function FamilyOrbitExplorer({ strains, onSelect }: Props) {
   // -------------------------------------------------------------------------
   // Breeding arcs (family-level)
   // -------------------------------------------------------------------------
-  const familyArcs = useMemo(() => generateFamilyArcs(strains), [strains]);
+  const familyArcs = useMemo(() => generateFamilyArcs(visibleStrains), [visibleStrains]);
+
+  // -------------------------------------------------------------------------
+  // Stats for the info bar
+  // -------------------------------------------------------------------------
+  const neoCount      = visibleStrains.filter((s) => !CARIDINA_SET.has(s.family)).length;
+  const caridineCount = visibleStrains.filter((s) =>  CARIDINA_SET.has(s.family)).length;
+  const totalCount    = visibleStrains.length;
 
   // -------------------------------------------------------------------------
   // Active families set (for dimming)
@@ -511,20 +520,6 @@ export function FamilyOrbitExplorer({ strains, onSelect }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
 
   // -------------------------------------------------------------------------
-  // Keyboard shortcut: B toggles breeding arcs
-  // -------------------------------------------------------------------------
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "b" || e.key === "B") {
-        if (document.activeElement?.tagName === "INPUT") return;
-        setShowBreedingArcs((v) => !v);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  // -------------------------------------------------------------------------
   // SVG viewBox
   // -------------------------------------------------------------------------
   const half = VB / 2;
@@ -535,22 +530,6 @@ export function FamilyOrbitExplorer({ strains, onSelect }: Props) {
   // -------------------------------------------------------------------------
   return (
     <div className="orbit-root">
-      {/* Breeding arc toggle */}
-      <button
-        className="breeding-toggle"
-        onClick={() => setShowBreedingArcs((v) => !v)}
-        aria-pressed={showBreedingArcs}
-        title="Toggle breeding arcs (B)"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
-          <path d="M12 8v4l3 3" />
-        </svg>
-        <span>Breeding</span>
-      </button>
 
       {/* Mobile planet name label overlay */}
       <AnimatePresence>
@@ -590,6 +569,17 @@ export function FamilyOrbitExplorer({ strains, onSelect }: Props) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Info bar */}
+      <div className="orbit-info-bar" aria-live="polite">
+        <span className="orbit-info-bar__count">
+          {totalCount} strain{totalCount !== 1 ? "s" : ""}
+        </span>
+        <span className="orbit-info-bar__sep">·</span>
+        <span className="orbit-info-bar__neo">{neoCount} Neo</span>
+        <span className="orbit-info-bar__sep">·</span>
+        <span className="orbit-info-bar__caridina">{caridineCount} Caridina</span>
+      </div>
 
       <svg
         ref={svgRef}
@@ -1167,8 +1157,6 @@ export function FamilyOrbitExplorer({ strains, onSelect }: Props) {
             <StrainRail
               family={railFamily}
               strains={families.find((f) => f.family === railFamily)?.strains ?? []}
-              color={familyColors[railFamily] ?? "#888"}
-              genus={familyGenus[railFamily] ?? ""}
               onSelect={onSelect}
               onClose={() => {
                 setRailOpen(false);
@@ -1179,6 +1167,11 @@ export function FamilyOrbitExplorer({ strains, onSelect }: Props) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Logo mark — bottom-right corner */}
+      <div className="orbit-logo-mark" aria-hidden="true">
+        <ShrimpLogoMark size={28} accentColor="var(--text-faint)" />
+      </div>
     </div>
   );
 }
